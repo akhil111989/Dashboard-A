@@ -1,6 +1,7 @@
 """
-📊 Indian Stock Intelligence Dashboard
-Sources: Yahoo Finance · Screener.in · NSE India API
+📊 Indian Stock Portfolio Table Tracker
+Add multiple stocks → see all key metrics in one clean table
+Sources: Yahoo Finance · Screener.in
 """
 
 import streamlit as st
@@ -9,960 +10,546 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-import plotly.graph_objects as go
-import time
 import re
-import json
+from datetime import datetime, timedelta
 
-# ══════════════════════════════════════════════════════════════
+# ────────────────────────────────────────────────────────────────
 # PAGE CONFIG
-# ══════════════════════════════════════════════════════════════
+# ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Indian Stock Intelligence",
+    page_title="Stock Table Tracker",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="collapsed",
 )
 
-# ══════════════════════════════════════════════════════════════
-# CUSTOM CSS — Dark Pro Theme
-# ══════════════════════════════════════════════════════════════
+# ────────────────────────────────────────────────────────────────
+# CSS — dark GitHub-style theme
+# ────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    /* ── Global ── */
-    .stApp { background-color: #0f172a; }
-    .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
-    
-    /* ── Header ── */
-    .main-title {
-        font-size: 2.2rem; font-weight: 900;
-        background: linear-gradient(135deg, #f97316 0%, #ef4444 50%, #ec4899 100%);
-        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-        letter-spacing: -0.5px;
-    }
-    .sub-title { color: #64748b; font-size: 0.85rem; margin-top: -0.5rem; margin-bottom: 1.5rem; }
-    
-    /* ── Metric Cards ── */
-    .metric-card {
-        background: linear-gradient(145deg, #1e293b, #162032);
-        border: 1px solid #2d3f58;
-        border-radius: 14px;
-        padding: 1.1rem 1.3rem;
-        margin-bottom: 0.9rem;
-        position: relative;
-        overflow: hidden;
-        transition: border-color 0.2s;
-    }
-    .metric-card:hover { border-color: #3b82f6; }
-    .metric-card::before {
-        content: '';
-        position: absolute; top: 0; left: 0;
-        width: 3px; height: 100%;
-        background: var(--accent, #3b82f6);
-        border-radius: 14px 0 0 14px;
-    }
-    .m-label {
-        font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
-        text-transform: uppercase; color: #64748b; margin-bottom: 0.35rem;
-    }
-    .m-value { font-size: 1.45rem; font-weight: 800; color: #f1f5f9; line-height: 1.2; }
-    .m-sub   { font-size: 0.78rem; color: #64748b; margin-top: 0.3rem; }
-    .m-src   {
-        display: inline-block; font-size: 0.6rem; font-weight: 700;
-        background: #0f2744; color: #60a5fa; border-radius: 4px;
-        padding: 0.05rem 0.35rem; margin-left: 0.4rem; vertical-align: middle;
-    }
-    
-    /* ── Colour Classes ── */
-    .c-green { color: #22c55e !important; }
-    .c-red   { color: #f87171 !important; }
-    .c-amber { color: #fbbf24 !important; }
-    .c-blue  { color: #60a5fa !important; }
+  .stApp { background: #0d1117; }
+  .block-container { padding-top: 1.5rem; padding-bottom: 2rem; max-width: 100% !important; }
+  h1, h2, h3, h4 { color: #f0f6fc !important; font-weight: 900 !important; }
+  .stButton button { border-radius: 8px !important; font-weight: 600 !important; }
 
-    /* ── Hero Banner ── */
-    .hero-banner {
-        background: linear-gradient(135deg, #1e293b 0%, #0f2040 100%);
-        border: 1px solid #2d3f58; border-radius: 16px;
-        padding: 1.5rem 2rem; margin-bottom: 1.5rem;
-        display: flex; align-items: center; flex-wrap: wrap; gap: 2rem;
-    }
-    .hero-price { font-size: 2.6rem; font-weight: 900; color: #f1f5f9; }
-    .hero-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
-                  letter-spacing: 0.1em; color: #64748b; margin-bottom: 0.2rem; }
-    .hero-sub   { font-size: 1.3rem; font-weight: 700; }
-    .hero-cap   { font-size: 1.1rem; font-weight: 700; color: #94a3b8; }
+  /* ── Table ── */
+  .tbl-wrap {
+    overflow-x: auto;
+    border-radius: 12px;
+    border: 1px solid #21262d;
+    margin-top: 1rem;
+  }
+  table { width: 100%; border-collapse: collapse; background: #161b22; }
+  thead tr { background: #1c2128; }
+  th {
+    padding: 10px 14px;
+    font-size: 0.67rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #7d8590;
+    text-align: right;
+    white-space: nowrap;
+    border-bottom: 2px solid #30363d;
+  }
+  th:first-child, th:nth-child(2) { text-align: left; }
+  td {
+    padding: 9px 14px;
+    font-size: 0.83rem;
+    color: #c9d1d9;
+    border-bottom: 1px solid #21262d;
+    text-align: right;
+    white-space: nowrap;
+  }
+  td:first-child { color: #58a6ff; font-weight: 700; text-align: left; }
+  td:nth-child(2) {
+    color: #e6edf3; text-align: left;
+    font-size: 0.74rem; max-width: 160px;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  tbody tr:hover { background: #1c2128; }
+  tbody tr:last-child td { border-bottom: none; }
 
-    /* ── Source Legend ── */
-    .legend {
-        text-align: center; color: #334155; font-size: 0.72rem;
-        margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #1e293b;
-    }
-    
-    /* ── Input override ── */
-    div[data-testid="stTextInput"] input {
-        background: #1e293b !important; border-color: #334155 !important;
-        color: #f1f5f9 !important; border-radius: 10px !important;
-        font-size: 1rem !important;
-    }
-    .stButton button { border-radius: 10px !important; }
+  /* ── Colour helpers ── */
+  .up   { color: #3fb950 !important; font-weight: 700; }
+  .down { color: #f85149 !important; font-weight: 700; }
+  .amb  { color: #d29922 !important; font-weight: 700; }
+  .muted { color: #7d8590; font-size: 0.75rem; }
+  .na   { color: #3d444d; }
+
+  /* ── Section headers inside table ── */
+  .grp-ath  { background: #0d2015 !important; color: #3fb950 !important; }
+  .grp-5yl  { background: #2d1520 !important; color: #f85149 !important; }
+  .grp-val  { background: #0d1e2d !important; color: #58a6ff !important; }
+
+  /* ── Pills ── */
+  .pill-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.4rem 0 1rem 0; }
+  .pill {
+    background: #161b22; border: 1px solid #30363d;
+    border-radius: 6px; padding: 3px 10px;
+    font-size: 0.72rem; color: #7d8590;
+  }
+  .pill b { color: #c9d1d9; }
+
+  /* ── Empty state ── */
+  .empty-state {
+    text-align: center; padding: 4rem 2rem; color: #484f58;
+  }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════════
-# FORMATTERS
-# ══════════════════════════════════════════════════════════════
+# ────────────────────────────────────────────────────────────────
+# FORMAT HELPERS
+# ────────────────────────────────────────────────────────────────
+def _none(val):
+    return val is None or (isinstance(val, float) and np.isnan(val))
+
 def fmt_cr(val):
-    if val is None or (isinstance(val, float) and np.isnan(val)):
-        return "N/A"
-    cr = val / 1e7
-    if cr >= 1_00_000:
-        return f"₹{cr/1e5:.2f}L Cr"
-    if cr >= 1_000:
-        return f"₹{cr/1e3:.2f}K Cr"
-    return f"₹{cr:,.0f} Cr"
+    """Absolute ₹ value → ₹ Crores display string (HTML)"""
+    if _none(val):
+        return '<span class="na">—</span>'
+    c = val / 1e7
+    if c >= 1_00_000:
+        return f"₹{c/1e5:.2f}L Cr"
+    if c >= 1_000:
+        return f"₹{c/1e3:.1f}K Cr"
+    return f"₹{c:,.0f} Cr"
 
-def fmt_pct(val, dec=2):
-    if val is None or (isinstance(val, float) and np.isnan(val)):
-        return "N/A"
-    return f"{val:+.{dec}f}%" if val < 0 else f"{val:.{dec}f}%"
+def fmt_pr(val, dec=2):
+    """Price in ₹"""
+    if _none(val):
+        return '<span class="na">—</span>'
+    return f"₹{val:,.{dec}f}"
 
-def fmt_num(val, dec=2, pre="", suf=""):
-    if val is None or (isinstance(val, float) and np.isnan(val)):
-        return "N/A"
-    return f"{pre}{val:,.{dec}f}{suf}"
+def fmt_pct(val, dec=1, good_positive=True):
+    """Coloured percentage"""
+    if _none(val):
+        return '<span class="na">—</span>'
+    css = "up" if (val > 0) == good_positive else "down"
+    sign = "+" if val > 0 else ""
+    return f'<span class="{css}">{sign}{val:.{dec}f}%</span>'
 
-def ts_to_date(ts):
-    """Convert various timestamp formats to readable date string"""
-    if ts is None:
-        return None
-    try:
-        if isinstance(ts, (int, float)):
-            return datetime.fromtimestamp(ts).strftime('%d %b %Y')
-        if hasattr(ts, 'strftime'):
-            return ts.strftime('%d %b %Y')
-        return str(ts)[:10]
-    except Exception:
-        return None
+def fmt_pe(val, dec=1, note=""):
+    """PE ratio with optional note"""
+    if _none(val):
+        return '<span class="na">—</span>'
+    note_html = f' <span class="na" style="font-size:0.6rem;">{note}</span>' if note else ""
+    return f"{val:.{dec}f}×{note_html}"
+
+def fmt_date(val):
+    if not val:
+        return '<span class="na">—</span>'
+    return f'<span class="muted">{val}</span>'
 
 
-# ══════════════════════════════════════════════════════════════
-# DATA SOURCE 1: YAHOO FINANCE
-# ══════════════════════════════════════════════════════════════
+# ────────────────────────────────────────────────────────────────
+# DATA — YAHOO FINANCE
+# ────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=900, show_spinner=False)
-def fetch_yf(symbol: str) -> dict:
-    """Fetch core data from Yahoo Finance (NSE preferred, BSE fallback)"""
-    result = {}
-    
-    for suffix in ['.NS', '.BO']:
+def fetch_stock(symbol: str) -> dict:
+    d = {"symbol": symbol, "ok": False}
+
+    for suffix in [".NS", ".BO"]:
         try:
             ticker = yf.Ticker(symbol + suffix)
-            info = ticker.info
-            
-            price = info.get('currentPrice') or info.get('regularMarketPrice')
+            info   = ticker.info
+            price  = info.get("currentPrice") or info.get("regularMarketPrice")
             if not price:
                 continue
-            
-            # ── Historical for true ATH / ATL ──────────────
-            hist = ticker.history(period='max', auto_adjust=True)
-            if hist.empty:
+
+            # ── Full history → true ATH ──────────────────
+            hist_all = ticker.history(period="max", auto_adjust=True)
+            if hist_all.empty:
                 continue
-            
-            # Remove timezone for clean display
-            if hist.index.tz is not None:
-                hist.index = hist.index.tz_localize(None)
-            
-            ath_idx = hist['High'].idxmax()
-            atl_idx = hist['Low'].idxmin()
-            ath = float(hist['High'].max())
-            atl = float(hist['Low'].min())
+            if hist_all.index.tz is not None:
+                hist_all.index = hist_all.index.tz_localize(None)
 
-            # ── Financials ─────────────────────────────────
-            mkt_cap = info.get('marketCap')
-            fcf     = info.get('freeCashflow')
-            fcf_yield = (fcf / mkt_cap * 100) if (fcf and mkt_cap and mkt_cap > 0) else None
-            
-            pe       = info.get('trailingPE')
-            fwd_pe   = info.get('forwardPE')
-            div_yld  = (info.get('dividendYield') or 0) * 100 or None
-            beta     = info.get('beta')
-            
-            # ── Earnings date ──────────────────────────────
-            result_date = None
-            try:
-                cal = ticker.calendar
-                if cal is not None:
-                    # cal can be a dict or DataFrame depending on yfinance version
-                    if isinstance(cal, dict):
-                        ed = cal.get('Earnings Date', [])
-                        if ed:
-                            result_date = ts_to_date(ed[0]) if not isinstance(ed[0], str) else str(ed[0])[:10]
-                    elif isinstance(cal, pd.DataFrame) and not cal.empty:
-                        if 'Earnings Date' in cal.columns:
-                            result_date = str(cal['Earnings Date'].iloc[0])[:10]
-                        elif 'Earnings Date' in cal.index:
-                            val = cal.loc['Earnings Date']
-                            result_date = str(val.iloc[0])[:10] if hasattr(val, 'iloc') else str(val)[:10]
-            except Exception:
-                pass
-            
-            result.update({
-                'ok': True,
-                'suffix': suffix,
-                'exchange': 'NSE' if suffix == '.NS' else 'BSE',
-                'name': info.get('longName') or info.get('shortName') or symbol,
-                'sector': info.get('sector', 'N/A'),
-                'industry': info.get('industry', 'N/A'),
-                'current_price': price,
-                'ath': ath,
-                'ath_date': ath_idx.strftime('%d %b %Y'),
-                'atl': atl,
-                'atl_date': atl_idx.strftime('%d %b %Y'),
-                'correction_pct': ((price - ath) / ath * 100) if ath else None,
-                'mkt_cap': mkt_cap,
-                'fcf': fcf,
-                'fcf_yield': fcf_yield,
-                'pe': pe,
-                'fwd_pe': fwd_pe,
-                'div_yield': div_yld,
-                'ex_div_date': ts_to_date(info.get('exDividendDate')),
-                'result_date': result_date,
-                'hist': hist,
-                'info': info,
-                'beta': beta,
-                'book_value': info.get('bookValue'),
-                'roe': (info.get('returnOnEquity') or 0) * 100 or None,
-                'profit_margin': (info.get('profitMargins') or 0) * 100 or None,
-                'revenue_growth': (info.get('revenueGrowth') or 0) * 100 or None,
-                'earnings_growth': (info.get('earningsGrowth') or 0) * 100 or None,
-                'debt_equity': info.get('debtToEquity'),
-                'pb': info.get('priceToBook'),
-                '52w_high': info.get('fiftyTwoWeekHigh'),
-                '52w_low': info.get('fiftyTwoWeekLow'),
+            ath_idx  = hist_all["High"].idxmax()
+            ath      = float(hist_all["High"].max())
+
+            # ── 5-Year window → 5Y Low ───────────────────
+            cutoff_5y = pd.Timestamp(datetime.now() - timedelta(days=5 * 365))
+            hist_5y   = hist_all[hist_all.index >= cutoff_5y]
+            if hist_5y.empty:
+                hist_5y = hist_all   # fallback if stock < 5 years old
+
+            low5y_idx = hist_5y["Low"].idxmin()
+            low5y     = float(hist_5y["Low"].min())
+
+            # ── Shares outstanding ───────────────────────
+            shares   = info.get("sharesOutstanding")
+            mkt_cap  = info.get("marketCap")                 # current
+            mcap_ath = (shares * ath)   if shares else None  # approx MCap at ATH
+            mcap_5yl = (shares * low5y) if shares else None  # approx MCap at 5Y low
+
+            # ── PE at ATH / 5Y Low (estimated via current EPS) ──
+            eps     = info.get("trailingEps")
+            pe_ath  = (ath   / eps) if (eps and eps > 0) else None
+            pe_5yl  = (low5y / eps) if (eps and eps > 0) else None
+
+            # ── Free cash flow yield ─────────────────────
+            fcf     = info.get("freeCashflow")
+            fcf_yld = (fcf / mkt_cap * 100) if (fcf and mkt_cap and mkt_cap > 0) else None
+
+            # ── Correction from ATH ──────────────────────
+            corr = ((price - ath) / ath * 100) if ath else None
+
+            d.update({
+                "ok"           : True,
+                "suffix"       : suffix,
+                "name"         : (info.get("longName") or info.get("shortName") or symbol)[:32],
+                # ── Current ──
+                "price"        : price,
+                "mkt_cap"      : mkt_cap,
+                # ── ATH ──
+                "ath"          : ath,
+                "mcap_ath"     : mcap_ath,
+                "ath_date"     : ath_idx.strftime("%d %b %Y"),
+                "corr_pct"     : corr,
+                # ── 5Y Low ──
+                "low5y"        : low5y,
+                "mcap_5yl"     : mcap_5yl,
+                "low5y_date"   : low5y_idx.strftime("%d %b %Y"),
+                # ── Valuation ──
+                "pe"           : info.get("trailingPE"),
+                "pe_ath"       : pe_ath,
+                "pe_5yl"       : pe_5yl,
+                "roce"         : None,          # filled later by Screener
+                "profit_growth": (info.get("earningsGrowth") or 0) * 100 or None,
+                "fcf_yield"    : fcf_yld,
+                "margin"       : (info.get("profitMargins") or 0) * 100 or None,
+                "div_yield"    : (info.get("dividendYield") or 0) * 100 or None,
             })
-            return result
-        
+            return d
+
         except Exception as e:
-            result['error'] = str(e)
-    
-    result['ok'] = False
-    result.setdefault('error', 'Symbol not found on NSE/BSE')
-    return result
+            d["error"] = str(e)
+
+    d.setdefault("error", "Symbol not found on NSE / BSE. Check spelling.")
+    return d
 
 
-# ══════════════════════════════════════════════════════════════
-# DATA SOURCE 2: SCREENER.IN
-# ══════════════════════════════════════════════════════════════
+# ────────────────────────────────────────────────────────────────
+# DATA — SCREENER.IN  (ROCE only)
+# ────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=3600, show_spinner=False)
-def fetch_screener(symbol: str) -> dict:
-    """Fetch ROCE, 5Y avg PE, historical ratios from Screener.in"""
+def fetch_roce(symbol: str):
     headers = {
-        'User-Agent': (
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-            'AppleWebKit/537.36 (KHTML, like Gecko) '
-            'Chrome/122.0.0.0 Safari/537.36'
-        ),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/122.0.0.0 Safari/537.36"
+        )
     }
-    
-    result = {'ok': False}
-    
     for url in [
         f"https://www.screener.in/company/{symbol.upper()}/consolidated/",
         f"https://www.screener.in/company/{symbol.upper()}/",
     ]:
         try:
-            resp = requests.get(url, headers=headers, timeout=15)
-            if resp.status_code != 200:
+            r = requests.get(url, headers=headers, timeout=12)
+            if r.status_code != 200 or "login" in r.url:
                 continue
-            if 'login' in resp.url:
-                result['error'] = 'Screener.in login required'
+            soup = BeautifulSoup(r.text, "lxml")
+            top  = soup.find("ul", id="top-ratios")
+            if not top:
                 continue
-            
-            soup = BeautifulSoup(resp.text, 'lxml')
-            
-            # ── Current Ratios from #top-ratios ────────────
-            raw = {}
-            top = soup.find('ul', id='top-ratios')
-            if top:
-                for li in top.find_all('li'):
-                    n = li.find('span', class_='name')
-                    v = li.find('span', class_='nowrap') or li.find('span', class_='value')
-                    if n and v:
-                        key = n.get_text(strip=True).lower().strip()
-                        val_text = v.get_text(separator=' ', strip=True)
-                        val_text = re.sub(r'[₹,]', '', val_text).replace('Cr.', '').strip()
-                        raw[key] = val_text
-            
-            # Extract ROCE
-            roce = None
-            for k, v in raw.items():
-                if 'roce' in k:
-                    try:
-                        roce = float(re.search(r'[\d.]+', v).group())
-                    except Exception:
-                        pass
-            
-            # Current PE from screener (for cross-check)
-            scr_pe = None
-            for k, v in raw.items():
-                if 'p/e' in k or ('stock' in k and 'p/e' in k):
-                    try:
-                        scr_pe = float(re.search(r'[\d.]+', v).group())
-                    except Exception:
-                        pass
-            
-            # ── Historical Ratios Table (ROCE + PE over years) ──
-            roce_hist = []
-            pe_hist   = []
-            
-            for section in soup.find_all(['section', 'div']):
-                h = section.find(['h2', 'h3'])
-                if h and 'ratio' in h.get_text().lower():
-                    tables = section.find_all('table')
-                    for table in tables:
-                        rows = table.find_all('tr')
-                        for row in rows:
-                            cells = row.find_all(['td', 'th'])
-                            if not cells:
-                                continue
-                            label = cells[0].get_text(strip=True).lower()
-                            
-                            if 'roce' in label:
-                                for cell in cells[1:]:
-                                    try:
-                                        v = float(re.search(r'[\-\d.]+', cell.get_text(strip=True)).group())
-                                        if -100 < v < 500:
-                                            roce_hist.append(v)
-                                    except Exception:
-                                        pass
-                            
-                            if 'price to earning' in label or label in ('p/e', 'pe'):
-                                for cell in cells[1:]:
-                                    try:
-                                        v = float(re.search(r'[\-\d.]+', cell.get_text(strip=True)).group())
-                                        if 0 < v < 1000:
-                                            pe_hist.append(v)
-                                    except Exception:
-                                        pass
-            
-            # Also scan ALL tables for P/E rows (some pages differ)
-            if not pe_hist:
-                for table in soup.find_all('table'):
-                    for row in table.find_all('tr'):
-                        cells = row.find_all(['td', 'th'])
-                        if not cells:
-                            continue
-                        label = cells[0].get_text(strip=True).lower()
-                        if 'price to earning' in label or label.startswith('p/e'):
-                            for cell in cells[1:]:
-                                try:
-                                    v = float(re.search(r'[\-\d.]+', cell.get_text(strip=True)).group())
-                                    if 0 < v < 1000:
-                                        pe_hist.append(v)
-                                except Exception:
-                                    pass
-            
-            # 5Y averages (last 5 data points)
-            pe_5y_avg = float(np.mean(pe_hist[-5:])) if len(pe_hist) >= 2 else None
-            
-            # ROCE growth = latest - oldest in window
-            roce_growth = None
-            if len(roce_hist) >= 2:
-                window = roce_hist[-5:] if len(roce_hist) >= 5 else roce_hist
-                roce_growth = window[-1] - window[0]
-            
-            # Latest ROCE from history (more reliable than top-ratios scrape)
-            if roce_hist:
-                roce = roce or roce_hist[-1]
-            
-            result.update({
-                'ok': True,
-                'roce': roce,
-                'roce_hist': roce_hist,
-                'roce_growth': roce_growth,
-                'pe_hist': pe_hist,
-                'pe_5y_avg': pe_5y_avg,
-                'scr_pe': scr_pe,
-                'raw': raw,
-            })
-            return result
-        
-        except Exception as e:
-            result['error'] = str(e)
-    
-    return result
+            for li in top.find_all("li"):
+                n = li.find("span", class_="name")
+                v = (li.find("span", class_="nowrap") or
+                     li.find("span", class_="value"))
+                if n and v and "roce" in n.get_text(strip=True).lower():
+                    txt = re.sub(r"[₹,%\s]", "", v.get_text(strip=True))
+                    m   = re.search(r"[\-\d.]+", txt)
+                    if m:
+                        return float(m.group())
+        except Exception:
+            pass
+    return None
 
 
-# ══════════════════════════════════════════════════════════════
-# DATA SOURCE 3: NSE INDIA API
-# ══════════════════════════════════════════════════════════════
-@st.cache_data(ttl=1800, show_spinner=False)
-def fetch_nse(symbol: str) -> dict:
-    """Fetch corporate actions & result dates from NSE India"""
-    result = {'ok': False, 'div_date': None, 'result_date': None, 'actions': []}
-    
-    session = requests.Session()
-    headers = {
-        'User-Agent': (
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-            'AppleWebKit/537.36 (KHTML, like Gecko) '
-            'Chrome/122.0.0.0 Safari/537.36'
-        ),
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://www.nseindia.com/',
-        'X-Requested-With': 'XMLHttpRequest',
-    }
-    
-    try:
-        # Warm-up: get cookies from the main page
-        session.get('https://www.nseindia.com', headers=headers, timeout=12)
-        time.sleep(0.8)
-        
-        today = datetime.now()
-        sym = symbol.upper()
-        
-        # ── Corporate Actions ───────────────────────────────
-        url = (
-            f"https://www.nseindia.com/api/corporates-corporateActions"
-            f"?index=equities&symbol={sym}"
-        )
-        resp = session.get(url, headers=headers, timeout=12)
-        if resp.status_code == 200:
-            try:
-                actions = resp.json()
-                result['actions'] = actions if isinstance(actions, list) else []
-                
-                future_divs    = []
-                future_results = []
-                
-                for a in result['actions']:
-                    if not isinstance(a, dict):
-                        continue
-                    purpose = (
-                        a.get('subject', '') + ' ' +
-                        a.get('purpose', '') + ' ' +
-                        a.get('remarks', '')
-                    ).lower()
-                    date_str = a.get('exDate') or a.get('ex_date') or ''
-                    
-                    parsed = None
-                    for fmt in ['%d-%b-%Y', '%Y-%m-%d', '%d/%m/%Y', '%b %d, %Y']:
-                        try:
-                            parsed = datetime.strptime(date_str.strip(), fmt)
-                            break
-                        except Exception:
-                            pass
-                    
-                    if parsed and parsed >= today:
-                        if 'dividend' in purpose:
-                            future_divs.append((parsed, a.get('remarks', '') or purpose))
-                        if any(k in purpose for k in ['result', 'quarterly', 'financial results', 'board meeting']):
-                            future_results.append((parsed, purpose))
-                
-                if future_divs:
-                    future_divs.sort(key=lambda x: x[0])
-                    result['div_date']     = future_divs[0][0].strftime('%d %b %Y')
-                    result['div_remarks']  = future_divs[0][1]
-                
-                if future_results:
-                    future_results.sort(key=lambda x: x[0])
-                    result['result_date']  = future_results[0][0].strftime('%d %b %Y')
-                
-                result['ok'] = True
-            except Exception:
-                pass
-        
-        # ── Event Calendar (Result Dates) ───────────────────
-        url2 = "https://www.nseindia.com/api/event-calendar?index=equities"
-        resp2 = session.get(url2, headers=headers, timeout=12)
-        if resp2.status_code == 200:
-            try:
-                events = resp2.json()
-                if isinstance(events, list):
-                    for ev in events:
-                        if not isinstance(ev, dict):
-                            continue
-                        if ev.get('symbol', '').upper() != sym:
-                            continue
-                        purpose  = ev.get('purpose', '').lower()
-                        date_str = ev.get('date', '') or ev.get('bDDate', '')
-                        
-                        if any(k in purpose for k in ['result', 'quarterly', 'financial', 'board meeting']):
-                            for fmt in ['%d-%b-%Y', '%Y-%m-%d', '%d/%m/%Y']:
-                                try:
-                                    ev_date = datetime.strptime(date_str.strip(), fmt)
-                                    if ev_date >= today:
-                                        result['result_date'] = ev_date.strftime('%d %b %Y')
-                                        result['ok'] = True
-                                        break
-                                except Exception:
-                                    pass
-            except Exception:
-                pass
-    
-    except Exception as e:
-        result['error'] = str(e)
-    
-    return result
+# ────────────────────────────────────────────────────────────────
+# SESSION STATE
+# ────────────────────────────────────────────────────────────────
+if "stocks" not in st.session_state:
+    st.session_state.stocks = []
 
 
-# ══════════════════════════════════════════════════════════════
-# PRICE CHART
-# ══════════════════════════════════════════════════════════════
-def make_chart(hist: pd.DataFrame, symbol: str, ath: float, ath_date: str):
-    if hist is None or hist.empty:
-        return None
-    
-    # 5-year window
-    cutoff  = pd.Timestamp(datetime.now() - timedelta(days=5 * 365))
-    h       = hist[hist.index >= cutoff].copy()
-    if h.empty:
-        h = hist.copy()
-    
-    # Low of 5Y window
-    low_5y      = float(h['Low'].min())
-    low_5y_date = h['Low'].idxmin().strftime('%d %b %Y')
-    
-    fig = go.Figure()
-    
-    # Price area
-    fig.add_trace(go.Scatter(
-        x=h.index, y=h['Close'],
-        mode='lines', name='Close Price',
-        line=dict(color='#3b82f6', width=1.8),
-        fill='tozeroy',
-        fillcolor='rgba(59,130,246,0.06)',
-        hovertemplate='<b>%{x|%d %b %Y}</b><br>₹%{y:,.2f}<extra></extra>',
-    ))
-    
-    # ATH reference
-    fig.add_hline(
-        y=ath, line_dash='dot', line_color='#22c55e', line_width=1.2,
-        annotation_text=f"  ATH ₹{ath:,.0f}  ({ath_date})",
-        annotation_position='top left',
-        annotation_font=dict(color='#22c55e', size=11),
-    )
-    
-    # 5Y low reference
-    fig.add_hline(
-        y=low_5y, line_dash='dot', line_color='#f87171', line_width=1.2,
-        annotation_text=f"  5Y Low ₹{low_5y:,.0f}  ({low_5y_date})",
-        annotation_position='bottom left',
-        annotation_font=dict(color='#f87171', size=11),
-    )
-    
-    fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='#64748b', family='Inter, sans-serif', size=11),
-        margin=dict(l=0, r=20, t=40, b=0),
-        height=360,
-        showlegend=False,
-        title=dict(
-            text=f"<b style='color:#f1f5f9'>{symbol}</b>  —  5-Year Price History",
-            font=dict(size=14, color='#94a3b8'),
-            x=0.01,
-        ),
-        xaxis=dict(
-            showgrid=False, showline=True, linecolor='#1e293b',
-            tickformat='%b %Y', tickfont=dict(size=10),
-            rangeslider=dict(visible=False),
-        ),
-        yaxis=dict(
-            showgrid=True, gridcolor='rgba(30,41,59,0.8)',
-            tickformat=',.0f', tickprefix='₹',
-            tickfont=dict(size=10),
-            side='right',
-        ),
-        hovermode='x unified',
-    )
-    return fig
+# ────────────────────────────────────────────────────────────────
+# HEADER
+# ────────────────────────────────────────────────────────────────
+st.markdown("## 📊 Indian Stock Table Tracker")
+st.markdown("""
+<div class="pill-row">
+  <div class="pill">Price &amp; ATH/5Y Low → <b>Yahoo Finance</b></div>
+  <div class="pill">ROCE → <b>Screener.in</b></div>
+  <div class="pill">Cache: <b>YF 15 min</b> · <b>Screener 1 hr</b></div>
+  <div class="pill">⚠️ PE @ ATH / 5Y Low = <b>estimate</b> (current EPS used)</div>
+</div>
+""", unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════════
-# METRIC CARD HTML BUILDER
-# ══════════════════════════════════════════════════════════════
-def card(title, value, sub="", color_class="", source="", accent="#3b82f6", icon=""):
-    cc = f"class='m-value {color_class}'" if color_class else "class='m-value'"
-    src_html = f"<span class='m-src'>{source}</span>" if source else ""
-    sub_html = f"<div class='m-sub'>{sub}</div>" if sub else ""
-    return f"""
-    <div class='metric-card' style='--accent:{accent};'>
-        <div class='m-label'>{icon} {title}{src_html}</div>
-        <div {cc}>{value}</div>
-        {sub_html}
-    </div>
-    """
+# ────────────────────────────────────────────────────────────────
+# CONTROLS ROW
+# ────────────────────────────────────────────────────────────────
+c1, c2, c3, c4 = st.columns([3, 1.2, 1.2, 1.2])
 
-
-# ══════════════════════════════════════════════════════════════
-# SIDEBAR — Quick Reference
-# ══════════════════════════════════════════════════════════════
-with st.sidebar:
-    st.markdown("### 📖 Quick Symbols")
-    popular = {
-        "🛢️ Reliance": "RELIANCE",
-        "💻 TCS": "TCS",
-        "🏦 HDFC Bank": "HDFCBANK",
-        "📱 Infosys": "INFY",
-        "🏦 ICICI Bank": "ICICIBANK",
-        "🚗 Maruti": "MARUTI",
-        "🏭 L&T": "LT",
-        "🛍️ ITC": "ITC",
-        "💊 Sun Pharma": "SUNPHARMA",
-        "⚡ Adani Green": "ADANIGREEN",
-        "🏗️ Adani Ports": "ADANIPORTS",
-        "📡 Airtel": "BHARTIARTL",
-        "🏠 Bajaj Finance": "BAJFINANCE",
-        "🔑 Asian Paints": "ASIANPAINT",
-        "🥤 Nestle": "NESTLEIND",
-    }
-    for label, sym in popular.items():
-        if st.button(label, key=f"btn_{sym}", use_container_width=True):
-            st.session_state['queued_symbol'] = sym
-    
-    st.markdown("---")
-    st.markdown("**Data Sources**")
-    st.markdown("""
-    - 🟢 **Yahoo Finance** — Price, ATH, FCF, PE, Div  
-    - 🔵 **Screener.in** — ROCE, 5Y Avg PE  
-    - 🟣 **NSE India API** — Result & Dividend dates  
-    """)
-    st.markdown("---")
-    st.caption("Cache: YF 15min · SCR 1hr · NSE 30min")
-    st.caption("⚠️ Educational only. Not financial advice.")
-
-
-# ══════════════════════════════════════════════════════════════
-# MAIN UI
-# ══════════════════════════════════════════════════════════════
-st.markdown("<div class='main-title'>📊 Indian Stock Intelligence</div>", unsafe_allow_html=True)
-st.markdown(
-    "<div class='sub-title'>Real-time data · Yahoo Finance &nbsp;·&nbsp; Screener.in &nbsp;·&nbsp; NSE India API</div>",
-    unsafe_allow_html=True,
-)
-
-# ── Session State ───────────────────────────────────────────
-if 'fetched_symbol' not in st.session_state:
-    st.session_state['fetched_symbol'] = None
-
-# Handle sidebar quick-pick
-if 'queued_symbol' in st.session_state:
-    st.session_state['fetched_symbol'] = st.session_state.pop('queued_symbol')
-
-# ── Search Bar ──────────────────────────────────────────────
-c1, c2 = st.columns([5, 1])
 with c1:
-    raw_input = st.text_input(
-        "NSE Symbol",
-        value=st.session_state.get('fetched_symbol', ''),
-        placeholder="Enter NSE symbol e.g. RELIANCE, TCS, HDFCBANK, INFY …",
+    new_sym = st.text_input(
+        "sym",
+        placeholder="Type NSE symbol and press Enter  e.g.  RELIANCE   TCS   HDFCBANK",
         label_visibility="collapsed",
     )
 with c2:
-    go_btn = st.button("🔍 Analyse", type="primary", use_container_width=True)
+    add_btn = st.button("➕  Add Stock", type="primary", use_container_width=True)
+with c3:
+    refresh_btn = st.button(
+        "🔄  Refresh All",
+        use_container_width=True,
+        disabled=(len(st.session_state.stocks) == 0),
+    )
+with c4:
+    clear_btn = st.button(
+        "🗑️  Clear All",
+        use_container_width=True,
+        disabled=(len(st.session_state.stocks) == 0),
+    )
 
-if go_btn and raw_input.strip():
-    st.session_state['fetched_symbol'] = raw_input.strip().upper()
+# ── Clear ──────────────────────────────────────────────────────
+if clear_btn:
+    st.session_state.stocks = []
+    st.rerun()
 
-symbol = st.session_state.get('fetched_symbol')
+# ── Refresh ────────────────────────────────────────────────────
+if refresh_btn:
+    syms = [s["symbol"] for s in st.session_state.stocks]
+    st.session_state.stocks = []
+    fetch_stock.clear()
+    fetch_roce.clear()
+    prog = st.progress(0, text="Refreshing…")
+    for i, sym in enumerate(syms):
+        prog.progress((i + 1) / len(syms), text=f"Refreshing {sym}…")
+        data = fetch_stock(sym)
+        if data["ok"]:
+            data["roce"] = fetch_roce(sym)
+        st.session_state.stocks.append(data)
+    prog.empty()
+    st.rerun()
 
-# ════════════════════════════════════════════════════════════
-# RESULTS
-# ════════════════════════════════════════════════════════════
-if symbol:
-    # ── Fetch All Sources ────────────────────────────────
-    col_s1, col_s2, col_s3 = st.columns(3)
-    
-    with col_s1:
-        with st.spinner("⚡ Yahoo Finance …"):
-            yf_d = fetch_yf(symbol)
-    
-    if not yf_d.get('ok'):
-        st.error(f"❌ **{symbol}** not found on NSE/BSE. Check the symbol and try again.")
-        st.info("💡 Examples: RELIANCE, TCS, INFY, HDFCBANK, ITC, WIPRO, BHARTIARTL, MARUTI")
-        st.stop()
-    
-    with col_s2:
-        with st.spinner("📊 Screener.in …"):
-            sc_d = fetch_screener(symbol)
-    
-    with col_s3:
-        with st.spinner("🏛️ NSE India …"):
-            nse_d = fetch_nse(symbol)
-    
-    # ── Company Header ───────────────────────────────────
-    name    = yf_d.get('name', symbol)
-    suffix  = yf_d.get('suffix', '.NS')
-    sector  = yf_d.get('sector', '')
-    price   = yf_d.get('current_price', 0)
-    mkt_cap = yf_d.get('mkt_cap')
-    corr    = yf_d.get('correction_pct', 0) or 0
-    ath     = yf_d.get('ath', 0)
-    atl     = yf_d.get('atl', 0)
-    ath_d   = yf_d.get('ath_date', 'N/A')
-    atl_d   = yf_d.get('atl_date', 'N/A')
-    
-    corr_color = "#22c55e" if corr > -15 else "#fbbf24" if corr > -40 else "#f87171"
-    
-    st.markdown(f"""
-    <div style='margin: 1.2rem 0 0.5rem 0;'>
-        <span style='font-size:1.7rem;font-weight:900;color:#f1f5f9;'>{name}</span>
-        <span style='font-size:0.9rem;color:#475569;margin-left:0.6rem;'>{symbol}{suffix}</span>
-        <span style='font-size:0.85rem;color:#64748b;margin-left:1rem;'>{sector}</span>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # ── Hero Banner ─────────────────────────────────────
-    st.markdown(f"""
-    <div class='hero-banner'>
-        <div>
-            <div class='hero-label'>Current Price</div>
-            <div class='hero-price'>₹{price:,.2f}</div>
-        </div>
-        <div>
-            <div class='hero-label'>Correction from ATH</div>
-            <div class='hero-sub' style='color:{corr_color};'>{corr:.1f}%</div>
-            <div style='font-size:0.75rem;color:#475569;'>from ₹{ath:,.2f}</div>
-        </div>
-        <div>
-            <div class='hero-label'>Market Cap</div>
-            <div class='hero-sub c-blue'>{fmt_cr(mkt_cap)}</div>
-        </div>
-        <div>
-            <div class='hero-label'>Exchange</div>
-            <div class='hero-sub' style='color:#94a3b8;'>{yf_d.get('exchange','')}</div>
-            <div style='font-size:0.75rem;color:#475569;'>{yf_d.get('industry','')}</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # ── 3-Column Metrics Grid ────────────────────────────
-    col1, col2, col3 = st.columns(3, gap="medium")
-    
-    with col1:
-        # ATH
-        st.markdown(card(
-            "ALL TIME HIGH", f"₹{ath:,.2f}",
-            sub=f"📅 {ath_d}",
-            color_class="c-green", source="YF", accent="#22c55e", icon="🏆"
-        ), unsafe_allow_html=True)
-        
-        # PE + 5Y Avg PE
-        pe = yf_d.get('pe')
-        pe_5y = sc_d.get('pe_5y_avg')
-        pe_str  = f"{pe:.1f}×" if pe else "N/A"
-        pe5_str = f"5Y Avg: {pe_5y:.1f}×" if pe_5y else "5Y Avg: N/A  (Screener.in)"
-        
-        if pe and pe_5y:
-            if pe > pe_5y * 1.25:
-                pe_c, pe_acc = "c-red", "#ef4444"
-            elif pe < pe_5y * 0.80:
-                pe_c, pe_acc = "c-green", "#22c55e"
+# ── Add single stock ───────────────────────────────────────────
+if add_btn and new_sym.strip():
+    sym = new_sym.strip().upper()
+    if sym in [s["symbol"] for s in st.session_state.stocks]:
+        st.warning(f"**{sym}** is already in the table.")
+    else:
+        with st.spinner(f"Fetching {sym} from Yahoo Finance + Screener.in…"):
+            data = fetch_stock(sym)
+            if data["ok"]:
+                data["roce"] = fetch_roce(sym)
+                st.session_state.stocks.append(data)
+                st.success(f"✅  **{sym}** — {data['name']} added!")
             else:
-                pe_c, pe_acc = "c-amber", "#fbbf24"
-        else:
-            pe_c, pe_acc = "", "#6366f1"
-        
-        st.markdown(card(
-            "P / E RATIO", pe_str, sub=pe5_str,
-            color_class=pe_c, source="YF+SCR", accent=pe_acc, icon="📐"
-        ), unsafe_allow_html=True)
-        
-        # Result Date
-        rdate = nse_d.get('result_date') or yf_d.get('result_date') or "Check NSE"
-        st.markdown(card(
-            "NEXT RESULT DATE", rdate,
-            sub="Board meeting / Quarterly results",
-            source="NSE+YF", accent="#8b5cf6", icon="📋"
-        ), unsafe_allow_html=True)
-    
-    with col2:
-        # ATL
-        st.markdown(card(
-            "ALL TIME LOW", f"₹{atl:,.2f}",
-            sub=f"📅 {atl_d}",
-            color_class="c-red", source="YF", accent="#ef4444", icon="📉"
-        ), unsafe_allow_html=True)
-        
-        # ROCE + Growth
-        roce = sc_d.get('roce')
-        roce_growth = sc_d.get('roce_growth')
-        roce_str  = f"{roce:.1f}%" if roce is not None else "N/A"
-        
-        if roce_growth is not None:
-            g_sign = "+" if roce_growth >= 0 else ""
-            roce_sub = f"5Y Δ: {g_sign}{roce_growth:.1f}pp"
-        else:
-            roce_sub = "Screener.in data"
-        
-        if roce is not None:
-            if roce >= 20:
-                rc, ra = "c-green", "#22c55e"
-            elif roce >= 12:
-                rc, ra = "c-amber", "#fbbf24"
-            else:
-                rc, ra = "c-red", "#ef4444"
-        else:
-            rc, ra = "", "#0ea5e9"
-        
-        st.markdown(card(
-            "ROCE", roce_str, sub=roce_sub,
-            color_class=rc, source="SCR", accent=ra, icon="⚙️"
-        ), unsafe_allow_html=True)
-        
-        # Dividend Yield
-        div_yld = yf_d.get('div_yield')
-        div_str = f"{div_yld:.2f}%" if div_yld else "N/A"
-        div_dt  = nse_d.get('div_date') or yf_d.get('ex_div_date') or "N/A"
-        
-        st.markdown(card(
-            "DIVIDEND YIELD", div_str,
-            sub=f"Ex-Date: {div_dt}",
-            color_class="c-green" if div_yld and div_yld > 1 else "",
-            source="YF+NSE", accent="#10b981", icon="💰"
-        ), unsafe_allow_html=True)
-    
-    with col3:
-        # Free Cash Flow + Yield
-        fcf = yf_d.get('fcf')
-        fcy = yf_d.get('fcf_yield')
-        fcf_str = fmt_cr(fcf) if fcf else "N/A"
-        fcy_str = f"FCF Yield: {fcy:.2f}%" if fcy else "FCF Yield: N/A"
-        
-        if fcf is not None:
-            fc_c = "c-green" if fcf > 0 else "c-red"
-            fc_a = "#22c55e" if fcf > 0 else "#ef4444"
-        else:
-            fc_c, fc_a = "", "#f97316"
-        
-        st.markdown(card(
-            "FREE CASH FLOW", fcf_str, sub=fcy_str,
-            color_class=fc_c, source="YF", accent=fc_a, icon="💵"
-        ), unsafe_allow_html=True)
-        
-        # Market Cap breakdown
-        st.markdown(card(
-            "MARKET CAP", fmt_cr(mkt_cap),
-            sub=f"52W: ₹{yf_d.get('52w_low',0) or 0:,.0f} – ₹{yf_d.get('52w_high',0) or 0:,.0f}",
-            source="YF", accent="#0ea5e9", icon="🏛️"
-        ), unsafe_allow_html=True)
-        
-        # Dividend Date
-        div_remarks = nse_d.get('div_remarks', '')
-        div_date_display = nse_d.get('div_date') or yf_d.get('ex_div_date') or "N/A"
-        
-        st.markdown(card(
-            "DIVIDEND EX-DATE", div_date_display,
-            sub=div_remarks[:55] + "…" if div_remarks and len(div_remarks) > 55 else div_remarks,
-            source="NSE+YF", accent="#a855f7", icon="📅"
-        ), unsafe_allow_html=True)
-    
-    # ── Additional Ratios Row ────────────────────────────
-    st.markdown("---")
-    st.markdown("#### 📊 Additional Metrics")
-    c4, c5, c6, c7 = st.columns(4, gap="medium")
-    
-    with c4:
-        roe = yf_d.get('roe')
-        st.markdown(card(
-            "ROE", f"{roe:.1f}%" if roe else "N/A",
-            color_class="c-green" if roe and roe > 15 else "c-amber" if roe else "",
-            source="YF", icon="📈"
-        ), unsafe_allow_html=True)
-    
-    with c5:
-        pb = yf_d.get('pb')
-        st.markdown(card(
-            "PRICE / BOOK", f"{pb:.2f}×" if pb else "N/A",
-            source="YF", icon="📚"
-        ), unsafe_allow_html=True)
-    
-    with c6:
-        eg = yf_d.get('earnings_growth')
-        st.markdown(card(
-            "EARNINGS GROWTH (YoY)", fmt_pct(eg),
-            color_class="c-green" if eg and eg > 0 else "c-red" if eg else "",
-            source="YF", accent="#f97316", icon="📈"
-        ), unsafe_allow_html=True)
-    
-    with c7:
-        beta = yf_d.get('beta')
-        b_color = "c-red" if beta and beta > 1.5 else "c-green" if beta and beta < 0.8 else "c-amber"
-        st.markdown(card(
-            "BETA", f"{beta:.2f}" if beta else "N/A",
-            sub="vs Nifty 50",
-            color_class=b_color, source="YF", icon="⚡"
-        ), unsafe_allow_html=True)
-    
-    # ── Price Chart ─────────────────────────────────────
-    st.markdown("---")
-    fig = make_chart(yf_d.get('hist'), symbol, ath, ath_d)
-    if fig:
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-    
-    # ── Data Quality Indicators ──────────────────────────
-    col_s1, col_s2, col_s3 = st.columns(3)
-    with col_s1:
-        st.success("✅ Yahoo Finance — Connected")
-    with col_s2:
-        if sc_d.get('ok'):
-            st.success("✅ Screener.in — Connected")
-        else:
-            msg = sc_d.get('error', 'Could not connect')
-            st.warning(f"⚠️ Screener.in — {msg[:40]}")
-    with col_s3:
-        if nse_d.get('ok'):
-            st.success("✅ NSE India API — Connected")
-        else:
-            st.warning("⚠️ NSE India API — Limited data")
-    
-    # ── Footer ──────────────────────────────────────────
+                st.error(f"❌  **{sym}** → {data.get('error', 'Not found')}")
+    st.rerun()
+
+
+# ────────────────────────────────────────────────────────────────
+# QUICK-ADD BUTTONS
+# ────────────────────────────────────────────────────────────────
+POPULAR = [
+    "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
+    "WIPRO",    "ITC", "MARUTI",   "BHARTIARTL", "SUNPHARMA",
+    "BAJFINANCE", "LT", "AXISBANK", "ASIANPAINT", "NESTLEIND",
+]
+
+st.markdown("**Quick add:**")
+q_cols = st.columns(len(POPULAR))
+for i, sym in enumerate(POPULAR):
+    with q_cols[i]:
+        already = sym in [s["symbol"] for s in st.session_state.stocks]
+        if st.button(
+            sym,
+            key=f"q_{sym}",
+            use_container_width=True,
+            disabled=already,
+            type="secondary",
+        ):
+            with st.spinner(f"Fetching {sym}…"):
+                data = fetch_stock(sym)
+                if data["ok"]:
+                    data["roce"] = fetch_roce(sym)
+                    st.session_state.stocks.append(data)
+            st.rerun()
+
+st.markdown("---")
+
+
+# ────────────────────────────────────────────────────────────────
+# MAIN TABLE
+# ────────────────────────────────────────────────────────────────
+if not st.session_state.stocks:
     st.markdown("""
-    <div class='legend'>
-        📡 <b>Sources:</b> Yahoo Finance (yfinance) &nbsp;·&nbsp; Screener.in &nbsp;·&nbsp; NSE India API &nbsp;&nbsp;|&nbsp;&nbsp;
-        ⏱️ <b>Cache TTL:</b> YF 15 min · Screener 1 hr · NSE 30 min &nbsp;&nbsp;|&nbsp;&nbsp;
-        ⚠️ For educational use only — not financial advice
+    <div class="empty-state">
+      <div style="font-size:3.5rem;margin-bottom:1rem;">📋</div>
+      <div style="font-size:1.15rem;color:#7d8590;">Add stocks above to start tracking</div>
+      <div style="font-size:0.85rem;margin-top:0.5rem;color:#3d444d;">
+        Type any NSE symbol or click a Quick Add button
+      </div>
     </div>
     """, unsafe_allow_html=True)
 
 else:
-    # ── Landing Page ─────────────────────────────────────
-    st.markdown("""
-    <div style='text-align:center;padding:5rem 2rem 3rem;'>
-        <div style='font-size:5rem;margin-bottom:1.5rem;'>📊</div>
-        <div style='font-size:1.4rem;font-weight:600;color:#94a3b8;margin-bottom:0.5rem;'>
-            Enter an NSE symbol above to begin
-        </div>
-        <div style='color:#475569;font-size:0.95rem;'>
-            or pick a stock from the left sidebar
-        </div>
-        <div style='margin-top:2rem;color:#334155;font-size:0.85rem;'>
-            RELIANCE &nbsp;·&nbsp; TCS &nbsp;·&nbsp; INFY &nbsp;·&nbsp; HDFCBANK &nbsp;·&nbsp;
-            ICICIBANK &nbsp;·&nbsp; ITC &nbsp;·&nbsp; MARUTI &nbsp;·&nbsp; BHARTIARTL
-        </div>
+    # ── Build table rows ────────────────────────────────────
+    rows_html = ""
+    for s in st.session_state.stocks:
+
+        if not s.get("ok"):
+            rows_html += (
+                f'<tr>'
+                f'<td>{s["symbol"]}</td>'
+                f'<td colspan="18" style="color:#f85149;text-align:left;">'
+                f'⚠️ {s.get("error","Unknown error")[:70]}'
+                f'</td></tr>'
+            )
+            continue
+
+        rows_html += f"""
+        <tr>
+          <td>{s['symbol']}</td>
+          <td title="{s['name']}">{s['name']}</td>
+
+          <td>{fmt_pr(s.get('price'))}</td>
+          <td>{fmt_cr(s.get('mkt_cap'))}</td>
+
+          <td class="up">{fmt_pr(s.get('ath'))}</td>
+          <td>{fmt_cr(s.get('mcap_ath'))}</td>
+          <td>{fmt_date(s.get('ath_date'))}</td>
+          <td>{fmt_pct(s.get('corr_pct'), good_positive=False)}</td>
+
+          <td class="down">{fmt_pr(s.get('low5y'))}</td>
+          <td>{fmt_cr(s.get('mcap_5yl'))}</td>
+          <td>{fmt_date(s.get('low5y_date'))}</td>
+
+          <td>{fmt_pe(s.get('pe'))}</td>
+          <td>{fmt_pe(s.get('pe_ath'), note='est')}</td>
+          <td>{fmt_pe(s.get('pe_5yl'), note='est')}</td>
+
+          <td>{fmt_pct(s.get('roce'))}</td>
+          <td>{fmt_pct(s.get('profit_growth'))}</td>
+          <td>{fmt_pct(s.get('fcf_yield'))}</td>
+          <td>{fmt_pct(s.get('margin'))}</td>
+          <td>{fmt_pct(s.get('div_yield'))}</td>
+        </tr>
+        """
+
+    # ── Column group colours in header ──────────────────────
+    st.markdown(f"""
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Company</th>
+
+            <th>Current Price</th>
+            <th>Market Cap</th>
+
+            <th class="grp-ath">ATH Price</th>
+            <th class="grp-ath">MCap @ ATH</th>
+            <th class="grp-ath">ATH Date</th>
+            <th class="grp-ath">Corr % from ATH</th>
+
+            <th class="grp-5yl">5Y Low Price</th>
+            <th class="grp-5yl">Min MCap (5Y)</th>
+            <th class="grp-5yl">5Y Low Date</th>
+
+            <th class="grp-val">PE (Now)</th>
+            <th class="grp-val">PE @ ATH ⚠️</th>
+            <th class="grp-val">PE @ 5Y Low ⚠️</th>
+
+            <th>ROCE</th>
+            <th>Profit Growth</th>
+            <th>FCF Yield</th>
+            <th>Net Margin</th>
+            <th>Div Yield</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows_html}
+        </tbody>
+      </table>
+    </div>
+    <div style="font-size:0.68rem;color:#3d444d;margin-top:0.5rem;padding-left:2px;">
+      ⚠️ <b>PE @ ATH</b> and <b>PE @ 5Y Low</b> are <b>estimates</b> —
+      calculated as historical price ÷ <i>current</i> trailing EPS.
+      True historical PE requires paid data sources (Bloomberg / Refinitiv).
+      &nbsp;|&nbsp; ROCE from Screener.in &nbsp;|&nbsp; All other data from Yahoo Finance
     </div>
     """, unsafe_allow_html=True)
-    
-    # Feature cards
-    f1, f2, f3 = st.columns(3, gap="large")
-    for col, icon, title, desc in [
-        (f1, "🏆", "ATH / ATL + Dates", "True all-time high & low with exact dates from full historical data"),
-        (f2, "⚙️", "ROCE + 5Y Growth", "Return on Capital Employed with 5-year trend from Screener.in"),
-        (f3, "📅", "Live Corporate Actions", "Next result date & dividend ex-date from NSE India API"),
-    ]:
-        with col:
-            st.markdown(f"""
-            <div class='metric-card' style='text-align:center;padding:1.5rem;'>
-                <div style='font-size:2rem;margin-bottom:0.5rem;'>{icon}</div>
-                <div style='font-weight:700;color:#f1f5f9;margin-bottom:0.4rem;'>{title}</div>
-                <div style='color:#64748b;font-size:0.85rem;'>{desc}</div>
-            </div>
-            """, unsafe_allow_html=True)
+
+    # ── Remove individual stock ──────────────────────────────
+    st.markdown("#### Remove a stock from table")
+    max_show = min(len(st.session_state.stocks), 10)
+    r_cols   = st.columns(max_show)
+    for i, s in enumerate(st.session_state.stocks[:max_show]):
+        with r_cols[i]:
+            if st.button(
+                f"✕ {s['symbol']}",
+                key=f"del_{s['symbol']}",
+                use_container_width=True,
+            ):
+                st.session_state.stocks = [
+                    x for x in st.session_state.stocks
+                    if x["symbol"] != s["symbol"]
+                ]
+                st.rerun()
+
+    # ── Export as CSV ────────────────────────────────────────
+    st.markdown("#### Download")
+    export_rows = []
+    for s in st.session_state.stocks:
+        if not s.get("ok"):
+            continue
+        export_rows.append({
+            "Symbol"             : s["symbol"],
+            "Company"            : s["name"],
+            "Current Price (₹)"  : s.get("price"),
+            "Market Cap (Cr)"    : round(s["mkt_cap"] / 1e7, 0) if s.get("mkt_cap") else None,
+            "ATH Price (₹)"      : s.get("ath"),
+            "MCap at ATH (Cr)"   : round(s["mcap_ath"] / 1e7, 0) if s.get("mcap_ath") else None,
+            "ATH Date"           : s.get("ath_date"),
+            "Correction from ATH": round(s["corr_pct"], 2) if s.get("corr_pct") else None,
+            "5Y Low Price (₹)"   : s.get("low5y"),
+            "Min MCap 5Y (Cr)"   : round(s["mcap_5yl"] / 1e7, 0) if s.get("mcap_5yl") else None,
+            "5Y Low Date"        : s.get("low5y_date"),
+            "PE Current"         : round(s["pe"], 1) if s.get("pe") else None,
+            "PE at ATH (est)"    : round(s["pe_ath"], 1) if s.get("pe_ath") else None,
+            "PE at 5Y Low (est)" : round(s["pe_5yl"], 1) if s.get("pe_5yl") else None,
+            "ROCE %"             : s.get("roce"),
+            "Profit Growth %"    : round(s["profit_growth"], 1) if s.get("profit_growth") else None,
+            "FCF Yield %"        : round(s["fcf_yield"], 2) if s.get("fcf_yield") else None,
+            "Net Margin %"       : round(s["margin"], 1) if s.get("margin") else None,
+            "Dividend Yield %"   : round(s["div_yield"], 2) if s.get("div_yield") else None,
+        })
+
+    if export_rows:
+        df  = pd.DataFrame(export_rows)
+        csv = df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="⬇️  Download table as CSV",
+            data=csv,
+            file_name=f"stocks_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv",
+        )
+
+
+# ────────────────────────────────────────────────────────────────
+# FOOTER
+# ────────────────────────────────────────────────────────────────
+st.markdown(
+    "<div style='margin-top:2rem;color:#21262d;font-size:0.7rem;text-align:center;'>"
+    "📡 Yahoo Finance · Screener.in &nbsp;|&nbsp; "
+    "For educational purposes only — not financial advice"
+    "</div>",
+    unsafe_allow_html=True,
+)
